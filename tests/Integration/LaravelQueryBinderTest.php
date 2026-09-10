@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace NPlusOne\PHPUnit\Tests\Integration;
 
 use Illuminate\Container\Container;
+use Illuminate\Database\Events\QueryExecuted;
 use NPlusOne\PHPUnit\Analysis\Detection;
 use NPlusOne\PHPUnit\Analysis\Detector;
 use NPlusOne\PHPUnit\Configuration\Options;
@@ -81,6 +82,45 @@ final class LaravelQueryBinderTest extends TestCase
 
         self::assertFalse($this->binder->attachTo($container));
         self::assertFalse((new LaravelQueryBinder(new QueryRecorder()))->attachTo(new \stdClass()));
+    }
+
+    /**
+     * Guards the one contract this package depends on across Laravel 10, 11
+     * and 12: the shape of the QueryExecuted event.
+     */
+    public function test_it_understands_the_query_executed_event_of_the_installed_laravel(): void
+    {
+        $this->binder->attach();
+        $this->recorder->start('Tests\Feature\UserTest::test_index');
+
+        $this->app->container->make('events')->dispatch(
+            new QueryExecuted('select * from users where id = ?', [7], 12.5, $this->app->connection()),
+        );
+
+        $queries = $this->recorder->queries();
+
+        self::assertCount(1, $queries);
+        self::assertSame('select * from users where id = ?', $queries[0]->sql);
+        self::assertSame([7], $queries[0]->bindings);
+        self::assertSame(12.5, $queries[0]->timeMs);
+        self::assertSame('default', $queries[0]->connection);
+    }
+
+    public function test_an_unexpected_event_object_is_ignored_instead_of_breaking_the_run(): void
+    {
+        $this->binder->attach();
+        $this->recorder->start('Tests\Feature\UserTest::test_index');
+
+        $events = $this->app->container->make('events');
+        $events->dispatch(QueryExecuted::class, [new \stdClass()]);
+        $events->dispatch(QueryExecuted::class, [new class () {
+            public function __get(string $name): mixed
+            {
+                throw new \RuntimeException('no such property: ' . $name);
+            }
+        }]);
+
+        self::assertSame(0, $this->recorder->totalQueries());
     }
 
     public function test_it_does_not_keep_finished_applications_alive(): void
