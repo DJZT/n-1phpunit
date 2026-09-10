@@ -1,0 +1,33 @@
+{
+    "name": "djzt/phpunit-n-plus-one",
+    "description": "PHPUnit extension that detects N+1 database queries during feature tests and prints the top offenders after the run.",
+    "keywords": ["phpunit", "laravel", "eloquent", "n+1", "testing", "database", "profiling"],
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2",
+        "phpunit/phpunit": "^10.5 || ^11.0 || ^12.0"
+    },
+    "require-dev": {
+        "illuminate/database": "^10.0 || ^11.0 || ^12.0",
+        "illuminate/events": "^10.0 || ^11.0 || ^12.0"
+    },
+    "suggest": {
+        "illuminate/database": "Required to collect queries from a Laravel application under test"
+    },
+    "autoload": {
+        "psr-4": {
+            "NPlusOne\\PHPUnit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "NPlusOne\\PHPUnit\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
