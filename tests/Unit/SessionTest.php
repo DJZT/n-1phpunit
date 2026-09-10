@@ -37,6 +37,51 @@ final class SessionTest extends TestCase
         self::assertStringContainsString('9 queries recorded in 2 tests; 2 tests affected.', $this->output);
     }
 
+    /**
+     * The threshold is a per-test rule. The same statement issued once by each
+     * of many tests is normal (that is just the suite exercising the same
+     * endpoint), so it must never add up into a finding.
+     */
+    public function test_one_query_per_test_is_never_a_finding_however_many_tests_run_it(): void
+    {
+        $session = $this->session();
+
+        for ($test = 1; $test <= 50; ++$test) {
+            $session->startTest('Tests\\Feature\\OrderTest::test_case_' . $test);
+            $this->recordLoop($session, times: 1);
+            $session->endTest();
+        }
+
+        $session->finish();
+
+        self::assertStringContainsString('No repeated query patterns found.', $this->output);
+        self::assertStringContainsString('50 queries recorded in 50 tests; 0 tests affected.', $this->output);
+    }
+
+    public function test_only_the_tests_that_loop_are_counted_into_a_hotspot(): void
+    {
+        $session = $this->session();
+
+        // One test loops, the other two merely touch the same query once.
+        $session->startTest('Tests\\Feature\\OrderTest::test_index');
+        $this->recordLoop($session, times: 8);
+        $session->endTest();
+
+        foreach (['test_show', 'test_edit'] as $name) {
+            $session->startTest('Tests\\Feature\\OrderTest::' . $name);
+            $this->recordLoop($session, times: 1);
+            $session->endTest();
+        }
+
+        $session->finish();
+
+        self::assertStringContainsString('Top 1 of 1 hotspot', $this->output);
+        self::assertStringContainsString('8x', $this->output);
+        self::assertStringContainsString('Tests\\Feature\\OrderTest::test_index (8x)', $this->output);
+        self::assertStringNotContainsString('more test', $this->output, 'the two single-query tests are not part of the hotspot');
+        self::assertStringContainsString('10 queries recorded in 3 tests; 1 test affected.', $this->output);
+    }
+
     public function test_tests_outside_the_filter_are_not_recorded(): void
     {
         $session = $this->session();
