@@ -8,6 +8,8 @@ use NPlusOne\PHPUnit\Configuration\Options;
 use NPlusOne\PHPUnit\Recording\Origin;
 use NPlusOne\PHPUnit\Recording\QueryEvent;
 use NPlusOne\PHPUnit\Recording\QueryRecorder;
+use NPlusOne\PHPUnit\Report\ReportDestination;
+use NPlusOne\PHPUnit\Report\Shard;
 use NPlusOne\PHPUnit\Session;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -147,6 +149,36 @@ final class SessionTest extends TestCase
 
         unlink($path);
         rmdir(dirname($path));
+    }
+
+    public function test_each_process_writes_its_own_report_under_a_parallel_runner(): void
+    {
+        $directory = sys_get_temp_dir() . '/n-plus-one-' . uniqid('', true);
+
+        $session = new Session(
+            new Options(filter: '', reportDir: $directory, console: false, basePath: '/app', colors: false),
+            writer: function (string $output): void {
+                $this->output .= $output;
+            },
+            destination: new ReportDestination(null, $directory, new Shard('7', 1234)),
+        );
+
+        $session->startTest('Tests\\Feature\\OrderTest::test_index');
+        $this->recordLoop($session, times: 4);
+        $session->finish();
+
+        $path = $directory . '/n-plus-one.7.json';
+
+        self::assertSame('', $this->output, 'console output is off, so workers do not interleave');
+        self::assertFileExists($path);
+
+        /** @var array{hotspots: list<array<string, mixed>>} $report */
+        $report = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame(4, $report['hotspots'][0]['max_queries_in_one_test']);
+
+        unlink($path);
+        rmdir($directory);
     }
 
     public function test_a_failing_json_report_does_not_break_the_run(): void

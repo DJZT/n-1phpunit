@@ -12,6 +12,7 @@ use NPlusOne\PHPUnit\Laravel\LaravelQueryBinder;
 use NPlusOne\PHPUnit\Recording\QueryRecorder;
 use NPlusOne\PHPUnit\Report\ConsoleReporter;
 use NPlusOne\PHPUnit\Report\JsonReporter;
+use NPlusOne\PHPUnit\Report\ReportDestination;
 use NPlusOne\PHPUnit\Report\Statistics;
 use Throwable;
 
@@ -26,6 +27,8 @@ final class Session
 
     private readonly Detector $detector;
 
+    private readonly ReportDestination $destination;
+
     /** @var callable(string): void */
     private $writer;
 
@@ -36,9 +39,11 @@ final class Session
         private readonly Aggregator $aggregator = new Aggregator(),
         ?Detector $detector = null,
         ?callable $writer = null,
+        ?ReportDestination $destination = null,
     ) {
         $this->binder = $binder ?? new LaravelQueryBinder($this->recorder);
         $this->detector = $detector ?? new Detector($this->options);
+        $this->destination = $destination ?? ReportDestination::fromOptions($this->options);
         $this->writer = $writer ?? static function (string $output): void {
             if (defined('STDOUT')) {
                 fwrite(STDOUT, $output);
@@ -114,14 +119,18 @@ final class Session
             listenerAttached: $this->binder->isAttached(),
         );
 
-        ($this->writer)((new ConsoleReporter($this->options))->render($hotspots, $statistics));
+        if ($this->options->console) {
+            ($this->writer)((new ConsoleReporter($this->options))->render($hotspots, $statistics));
+        }
 
-        if ($this->options->reportFile === null) {
+        $path = $this->destination->path();
+
+        if ($path === null) {
             return;
         }
 
         try {
-            (new JsonReporter($this->options))->write($this->options->reportFile, $hotspots, $statistics);
+            (new JsonReporter($this->options))->write($path, $hotspots, $statistics);
         } catch (Throwable $exception) {
             ($this->writer)('  N+1 report could not be written: ' . $exception->getMessage() . PHP_EOL);
         }

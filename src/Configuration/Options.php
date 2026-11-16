@@ -21,6 +21,8 @@ final class Options
      * @param string $filter        PCRE matched against the test id (Tests\Feature\FooTest::testBar).
      *                              An empty string disables filtering (every test is analysed).
      * @param list<string> $ignoreSql PCRE list; a query whose normalised form matches is never reported.
+     * @param ?string $reportDir Directory for one report per process; the safe choice for parallel runs.
+     * @param bool $console Whether the ranked table is printed at the end of the run.
      */
     public function __construct(
         public readonly bool $enabled = true,
@@ -29,6 +31,8 @@ final class Options
         public readonly string $filter = self::DEFAULT_FILTER,
         public readonly bool $includeDuplicates = true,
         public readonly ?string $reportFile = null,
+        public readonly ?string $reportDir = null,
+        public readonly bool $console = true,
         public readonly int $sqlMaxLength = 160,
         public readonly array $ignoreSql = [],
         public readonly string $basePath = '',
@@ -58,6 +62,8 @@ final class Options
             filter: $get('filter') ?? $defaults->filter,
             includeDuplicates: self::toBool($get('include-duplicates'), $defaults->includeDuplicates),
             reportFile: $get('report-file'),
+            reportDir: $get('report-dir'),
+            console: self::toBool($get('console'), $defaults->console),
             sqlMaxLength: max(20, (int) ($get('sql-max-length') ?? $defaults->sqlMaxLength)),
             ignoreSql: $ignoreSql === null ? [] : array_values(array_filter(array_map('trim', explode('|||', $ignoreSql)))),
             basePath: rtrim($get('base-path') ?? self::guessBasePath(), '/'),
