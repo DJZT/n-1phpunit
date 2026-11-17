@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Used by tests/Integration/SequentialVersusParallelTest.php: two classes that
+     can be split across workers, each producing the same counts so that the
+     ranking has real ties to settle. -->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="../../vendor/autoload.php"
+         cacheDirectory="../../.phpunit.cache/fixtures-split"
+         colors="false">
+    <testsuites>
+        <testsuite name="split">
+            <directory>Split</directory>
+        </testsuite>
+    </testsuites>
+    <extensions>
+        <bootstrap class="NPlusOne\PHPUnit\NPlusOneExtension">
+            <parameter name="filter" value=""/>
+            <parameter name="threshold" value="3"/>
+            <parameter name="console" value="false"/>
+        </bootstrap>
+    </extensions>
+</phpunit>

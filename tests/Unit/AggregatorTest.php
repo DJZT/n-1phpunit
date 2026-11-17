@@ -50,6 +50,44 @@ final class AggregatorTest extends TestCase
         self::assertSame(10, $ranked[2]->origin->line);
     }
 
+    public function test_equal_counts_are_ordered_by_call_site_not_by_time(): void
+    {
+        $slowButLater = new Detection(
+            testId: 't1',
+            sql: 'select * from "users" where "id" = ?',
+            normalizedSql: 'select * from "users" where "id" = ?',
+            origin: new Origin('/app/app/Zeta.php', 5, null),
+            count: 4,
+            distinctBindings: 4,
+            totalTimeMs: 900.0,
+        );
+        $fastButEarlier = new Detection(
+            testId: 't1',
+            sql: 'select * from "users" where "id" = ?',
+            normalizedSql: 'select * from "users" where "id" = ?',
+            origin: new Origin('/app/app/Alpha.php', 5, null),
+            count: 4,
+            distinctBindings: 4,
+            totalTimeMs: 0.1,
+        );
+
+        foreach ([[$slowButLater, $fastButEarlier], [$fastButEarlier, $slowButLater]] as $order) {
+            $aggregator = new Aggregator();
+            $aggregator->addAll($order);
+
+            $files = array_map(
+                static fn (Hotspot $hotspot): string => $hotspot->origin->file,
+                $aggregator->top(10),
+            );
+
+            self::assertSame(
+                ['/app/app/Alpha.php', '/app/app/Zeta.php'],
+                $files,
+                'the order must not depend on timings or on the order detections arrived in',
+            );
+        }
+    }
+
     public function test_it_returns_at_most_the_requested_number_of_hotspots(): void
     {
         $aggregator = new Aggregator();

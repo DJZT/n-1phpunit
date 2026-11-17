@@ -151,6 +151,44 @@ final class SessionTest extends TestCase
         rmdir(dirname($path));
     }
 
+    /**
+     * `limit` is about what a human reads. The file is merged with the other
+     * workers' files afterwards, so trimming it there would lose hotspots.
+     */
+    public function test_the_file_report_keeps_every_hotspot_while_the_console_shows_only_the_top(): void
+    {
+        $path = sys_get_temp_dir() . '/n-plus-one-' . uniqid('', true) . '/report.json';
+
+        $session = new Session(
+            new Options(limit: 3, filter: '', reportFile: $path, basePath: '/app', colors: false),
+            writer: function (string $output): void {
+                $this->output .= $output;
+            },
+        );
+
+        $session->startTest('Tests\\Feature\\OrderTest::test_index');
+
+        foreach (range(1, 5) as $place) {
+            $this->recordLoop($session, times: 3 + $place, place: 'Place' . $place . '.php');
+        }
+
+        $session->finish();
+
+        self::assertStringContainsString('Top 3 of 5 hotspots', $this->output);
+        self::assertSame(3, substr_count($this->output, 'app/Place'), 'the console is trimmed to the limit');
+
+        /** @var array{summary: array<string, int>, hotspots: list<array<string, mixed>>} $report
+         */
+        $report = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame(5, $report['summary']['hotspots']);
+        self::assertCount(5, $report['hotspots'], 'the file keeps every hotspot for the merge');
+        self::assertSame(8, $report['hotspots'][0]['max_queries_in_one_test'], 'still ranked worst first');
+
+        unlink($path);
+        rmdir(dirname($path));
+    }
+
     public function test_each_process_writes_its_own_report_under_a_parallel_runner(): void
     {
         $directory = sys_get_temp_dir() . '/n-plus-one-' . uniqid('', true);
@@ -203,7 +241,7 @@ final class SessionTest extends TestCase
         );
     }
 
-    private function recordLoop(Session $session, int $times): void
+    private function recordLoop(Session $session, int $times, string $place = 'Http/Controllers/OrderController.php'): void
     {
         for ($i = 1; $i <= $times; ++$i) {
             $session->recorder()->record(new QueryEvent(
@@ -211,7 +249,7 @@ final class SessionTest extends TestCase
                 [$i],
                 0.5,
                 'testing',
-                new Origin('/app/app/Http/Controllers/OrderController.php', 31, 'index()'),
+                new Origin('/app/app/' . $place, 31, 'index()'),
             ));
         }
     }

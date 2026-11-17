@@ -55,7 +55,11 @@ final class Aggregator
 
     /**
      * Worst offenders first: the biggest burst inside a single test wins, then
-     * the overall volume, then the time spent.
+     * the overall volume.
+     *
+     * Equal counts are settled by the call site, never by the time spent:
+     * milliseconds differ between runs, and ranking on them would reshuffle
+     * the report (and therefore what --top shows) from one run to the next.
      *
      * @return list<Hotspot>
      */
@@ -64,8 +68,8 @@ final class Aggregator
         $hotspots = array_values($this->hotspots);
 
         usort($hotspots, static function (Hotspot $a, Hotspot $b): int {
-            return [$b->maxCount(), $b->totalCount(), $b->totalTimeMs()]
-                <=> [$a->maxCount(), $a->totalCount(), $a->totalTimeMs()];
+            return [$b->maxCount(), $b->totalCount(), $a->origin->key(), $a->normalizedSql]
+                <=> [$a->maxCount(), $a->totalCount(), $b->origin->key(), $b->normalizedSql];
         });
 
         return array_slice($hotspots, 0, $limit);
