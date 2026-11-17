@@ -67,6 +67,47 @@ final class EloquentLazyLoadingTest extends TestCase
         self::assertStringContainsString('PostBoard->withLazyComments()', (string) $hotspot['function']);
     }
 
+    /**
+     * The example in the README: one screen, three problems, each blamed on
+     * its own line.
+     */
+    public function test_a_whole_screen_reports_one_row_per_problem(): void
+    {
+        $report = $this->record(static function (Session $session): void {
+            foreach (['test_board_is_rendered', 'test_board_shows_authors'] as $name) {
+                $session->startTest('Tests\Feature\PostBoardTest::' . $name);
+                (new PostBoard())->render();
+                $session->endTest();
+            }
+
+            $session->startTest('Tests\Feature\PostBoardTest::test_board_is_eager_loaded');
+            (new PostBoard())->withEagerComments();
+            $session->endTest();
+        });
+
+        self::assertCount(3, $report['hotspots']);
+        self::assertSame(604, $report['summary']['recorded_queries']);
+        self::assertSame(2, $report['summary']['affected_tests'], 'the eager-loaded request is clean');
+
+        $rows = array_map(static fn (array $hotspot): array => [
+            'kind' => $hotspot['kind'],
+            'origin' => $hotspot['origin'],
+            'worst' => $hotspot['max_queries_in_one_test'],
+            'total' => $hotspot['total_queries'],
+            'tests' => count($hotspot['tests']),
+        ], $report['hotspots']);
+
+        $line = $this->lineOfRenderLoop();
+
+        self::assertSame([
+            // The setting is read with the same parameter every time, so it is
+            // a duplicate rather than an N+1.
+            ['kind' => Detection::KIND_DUPLICATE, 'origin' => $this->at($line + 1), 'worst' => self::POSTS, 'total' => self::POSTS * 2, 'tests' => 2],
+            ['kind' => Detection::KIND_N_PLUS_ONE, 'origin' => $this->at($line + 5), 'worst' => self::POSTS, 'total' => self::POSTS * 2, 'tests' => 2],
+            ['kind' => Detection::KIND_N_PLUS_ONE, 'origin' => $this->at($line + 6), 'worst' => self::POSTS, 'total' => self::POSTS * 2, 'tests' => 2],
+        ], $rows);
+    }
+
     public function test_the_eager_loaded_screen_produces_no_finding(): void
     {
         $report = $this->record(static function (Session $session): void {
@@ -148,6 +189,25 @@ final class EloquentLazyLoadingTest extends TestCase
         $report = json_decode((string) file_get_contents($this->reportFile), true, flags: JSON_THROW_ON_ERROR);
 
         return $report;
+    }
+
+    private function at(int $line): string
+    {
+        return 'tests/Fixtures/Eloquent/PostBoard.php:' . $line;
+    }
+
+    private function lineOfRenderLoop(): int
+    {
+        $file = dirname(__DIR__) . '/Fixtures/Eloquent/PostBoard.php';
+        $lines = file($file) ?: [];
+
+        foreach ($lines as $index => $line) {
+            if (str_contains($line, 'foreach (Post::all()') && str_contains($lines[$index + 1] ?? '', 'Setting::query()')) {
+                return $index + 1;
+            }
+        }
+
+        self::fail('The render() loop was not found in the fixture.');
     }
 
     /**

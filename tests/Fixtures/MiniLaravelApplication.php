@@ -44,17 +44,26 @@ final class MiniLaravelApplication
     }
 
     /**
-     * A board of posts, each with comments, for reproducing the N+1 that a
-     * single HTTP request causes when it loops over models.
+     * A board of posts, each with an author and comments, plus a settings
+     * table — enough to reproduce what a single HTTP request does to a
+     * database when nothing is eager loaded.
      */
     public function seedPostsWithComments(int $posts, int $commentsEach): void
     {
         $connection = $this->connection();
-        $connection->statement('create table posts (id integer primary key autoincrement, title varchar not null)');
+        $connection->statement('create table users (id integer primary key autoincrement, name varchar not null)');
+        $connection->statement('create table posts (id integer primary key autoincrement, user_id integer not null, title varchar not null)');
         $connection->statement('create table comments (id integer primary key autoincrement, post_id integer not null, body varchar not null)');
+        $connection->statement('create table settings (id integer primary key autoincrement, key varchar not null, value varchar not null)');
+
+        $connection->insert('insert into settings (key, value) values (?, ?)', ['locale', 'uk']);
+
+        foreach (['ada', 'linus', 'rasmus'] as $name) {
+            $connection->insert('insert into users (name) values (?)', [$name]);
+        }
 
         for ($post = 1; $post <= $posts; ++$post) {
-            $connection->insert('insert into posts (title) values (?)', ['post ' . $post]);
+            $connection->insert('insert into posts (user_id, title) values (?, ?)', [($post % 3) + 1, 'post ' . $post]);
 
             for ($comment = 1; $comment <= $commentsEach; ++$comment) {
                 $connection->insert('insert into comments (post_id, body) values (?, ?)', [$post, 'comment ' . $comment]);

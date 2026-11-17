@@ -76,6 +76,111 @@ There are two kinds of finding:
 Queries from `setUp()` (migrations, factories, seeders) never reach the report: the listener is
 attached after the test has been prepared.
 
+## What the report looks like for a real N+1
+
+The case the extension is built for: one request walks a collection of models and touches a
+relation on each. The fixture below — `tests/Fixtures/Eloquent/PostBoard.php`, standing in for a
+controller, an API resource or a blade view — renders a board of 100 posts:
+
+```php
+public function render(): array
+{
+    $rows = [];
+
+    foreach (Post::all() as $post) {
+        $locale = Setting::query()->where('key', 'locale')->first();
+
+        $rows[] = [
+            'title' => $post->title,
+            'author' => $post->author->name,
+            'comments' => $post->comments->count(),
+            'locale' => $locale?->value,
+        ];
+    }
+
+    return $rows;
+}
+```
+
+Two feature tests request that screen, a third one requests its eager-loaded version. This is
+the actual output, printed verbatim by the run:
+
+```
+==============================================================================
+  N+1 query report
+==============================================================================
+  Top 3 of 3 hotspots (a query shape repeated 3+ times in one test)
+
+ #1   100x    duplicate   tests/Fixtures/Eloquent/PostBoard.php:62 (PostBoard->render())
+        select * from "settings" where "key" = ? limit 1
+        in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
+        200 queries overall, 2.25 ms
+
+ #2   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:66 (PostBoard->render())
+        select * from "users" where "users"."id" = ? limit 1
+        in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
+        200 queries overall, 2.28 ms
+
+ #3   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:67 (PostBoard->render())
+        select * from "comments" where "comments"."post_id" = ? and "comments"."post_id" is not null
+        in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
+        200 queries overall, 4.60 ms
+
+------------------------------------------------------------------------------
+  604 queries recorded in 3 tests; 2 tests affected.
+```
+
+How to read it:
+
+* **One row per problem, not per query.** Three lines of that loop cause three rows: the author
+  on `:66`, the comments on `:67`, and the setting on `:62`.
+* **`100x` is one request.** It is the worst single test, which is what a user of the screen
+  actually waits for — not a sum over the suite. `200 queries overall` is the sum, and it answers
+  a different question: how much the whole suite spends in this place.
+* **The blame lands in your code.** The queries are issued from inside Eloquent, but the call
+  site reported is the line in `render()` that touched the relation.
+* **`+1 more test`** means a second test reached the same place. Both are listed in the JSON
+  report's `tests` map; the headline count stays per request.
+* **The eager-loaded request is absent.** It runs two queries for the same screen, below the
+  threshold, so it is not a finding — and it is why `2 tests affected` is not 3.
+* **`duplicate` is not an N+1.** The setting is read with the same parameter every time, so it
+  needs a cache, not eager loading. Filter the real N+1 with `--kind=n+1` (or
+  `include-duplicates=false`) and only rows #2 and #3 remain.
+
+The same run through the CLI, with a budget of 20 queries per request:
+
+```console
+$ vendor/bin/n-plus-one build/n-plus-one --kind=n+1 --max-queries=20
+  2 violations:
+    - [max-queries] 100x in one test at tests/Fixtures/Eloquent/PostBoard.php:66 exceeds the budget of 20
+    - [max-queries] 100x in one test at tests/Fixtures/Eloquent/PostBoard.php:67 exceeds the budget of 20
+$ echo $?
+1
+```
+
+And the JSON entry behind row #2:
+
+```json
+{
+    "kind": "N+1",
+    "sql": "select * from \"users\" where \"users\".\"id\" = ? limit 1",
+    "normalized_sql": "select * from \"users\" where \"users\".\"id\" = ? limit ?",
+    "origin": "tests/Fixtures/Eloquent/PostBoard.php:66",
+    "function": "PostBoard->render()",
+    "connection": "default",
+    "max_queries_in_one_test": 100,
+    "total_queries": 200,
+    "total_time_ms": 2.28,
+    "tests": {
+        "Tests\\Feature\\PostBoardTest::test_board_is_rendered": 100,
+        "Tests\\Feature\\PostBoardTest::test_board_shows_authors": 100
+    }
+}
+```
+
+This example is produced by `tests/Integration/EloquentLazyLoadingTest.php`, which asserts the
+kinds, the lines and the counts above, so it cannot quietly go out of date.
+
 ## Parameters
 
 Every parameter can be set in `phpunit.xml` or overridden with an environment variable

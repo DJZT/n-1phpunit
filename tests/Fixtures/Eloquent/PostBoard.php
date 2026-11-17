@@ -46,4 +46,29 @@ final class PostBoard
 
         return $counts;
     }
+
+    /**
+     * A whole screen the way it usually goes wrong: one query for the posts,
+     * then three more per post — the author, the comments and a setting that
+     * is read again on every iteration with the same parameter.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function render(): array
+    {
+        $rows = [];
+
+        foreach (Post::all() as $post) {
+            $locale = Setting::query()->where('key', 'locale')->first();
+
+            $rows[] = [
+                'title' => $post->title,
+                'author' => $post->author->name,
+                'comments' => $post->comments->count(),
+                'locale' => $locale?->value,
+            ];
+        }
+
+        return $rows;
+    }
 }

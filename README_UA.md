@@ -77,6 +77,111 @@ composer require --dev djzt/phpunit-n-plus-one
 Запити з `setUp()` (міграції, фабрики, сідери) у звіт не потрапляють — слухач включається
 після підготовки тесту.
 
+## Як виглядає звіт на справжньому N+1
+
+Випадок, для якого розширення й зроблене: один запит проходить колекцією моделей і на кожній
+торкається звʼязку. Фікстура нижче — `tests/Fixtures/Eloquent/PostBoard.php`, що стоїть замість
+контролера, API-ресурсу чи blade-шаблону — рендерить дошку зі 100 постів:
+
+```php
+public function render(): array
+{
+    $rows = [];
+
+    foreach (Post::all() as $post) {
+        $locale = Setting::query()->where('key', 'locale')->first();
+
+        $rows[] = [
+            'title' => $post->title,
+            'author' => $post->author->name,
+            'comments' => $post->comments->count(),
+            'locale' => $locale?->value,
+        ];
+    }
+
+    return $rows;
+}
+```
+
+Два feature-тести запитують цей екран, третій — його жадібно завантажену версію. Це справжній
+вивід прогону, слово в слово:
+
+```
+==============================================================================
+  N+1 query report
+==============================================================================
+  Top 3 of 3 hotspots (a query shape repeated 3+ times in one test)
+
+ #1   100x    duplicate   tests/Fixtures/Eloquent/PostBoard.php:62 (PostBoard->render())
+        select * from "settings" where "key" = ? limit 1
+        in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
+        200 queries overall, 2.25 ms
+
+ #2   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:66 (PostBoard->render())
+        select * from "users" where "users"."id" = ? limit 1
+        in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
+        200 queries overall, 2.28 ms
+
+ #3   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:67 (PostBoard->render())
+        select * from "comments" where "comments"."post_id" = ? and "comments"."post_id" is not null
+        in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
+        200 queries overall, 4.60 ms
+
+------------------------------------------------------------------------------
+  604 queries recorded in 3 tests; 2 tests affected.
+```
+
+Як це читати:
+
+* **Один рядок на проблему, а не на запит.** Три рядки того цикла дають три рядки звіту: автор
+  на `:66`, коментарі на `:67` і налаштування на `:62`.
+* **`100x` — це один запит.** Це найгірший окремий тест, тобто те, чого реально чекає користувач
+  екрана, а не сума по сюїті. `200 queries overall` — сума, і вона відповідає на інше питання:
+  скільки на цьому місці витрачає вся сюїта.
+* **Винним призначається твій код.** Запити летять з глибини Eloquent, але місцем виклику
+  вказано рядок у `render()`, який торкнувся звʼязку.
+* **`+1 more test`** означає, що в це саме місце зайшов другий тест. Обидва перелічені в мапі
+  `tests` у JSON-звіті, а головний лічильник залишається «на запит».
+* **Жадібно завантаженого запиту тут немає.** Він робить два запити на той самий екран — нижче
+  порога, тому це не знахідка. Саме тому `2 tests affected`, а не 3.
+* **`duplicate` — це не N+1.** Налаштування читається з тим самим параметром щоразу, тож йому
+  потрібен кеш, а не eager loading. Відфільтрувати справжні N+1 — `--kind=n+1` (або
+  `include-duplicates=false`), і залишаться лише рядки #2 і #3.
+
+Той самий прогін через CLI з бюджетом 20 запитів на запит:
+
+```console
+$ vendor/bin/n-plus-one build/n-plus-one --kind=n+1 --max-queries=20
+  2 violations:
+    - [max-queries] 100x in one test at tests/Fixtures/Eloquent/PostBoard.php:66 exceeds the budget of 20
+    - [max-queries] 100x in one test at tests/Fixtures/Eloquent/PostBoard.php:67 exceeds the budget of 20
+$ echo $?
+1
+```
+
+І запис у JSON, що стоїть за рядком #2:
+
+```json
+{
+    "kind": "N+1",
+    "sql": "select * from \"users\" where \"users\".\"id\" = ? limit 1",
+    "normalized_sql": "select * from \"users\" where \"users\".\"id\" = ? limit ?",
+    "origin": "tests/Fixtures/Eloquent/PostBoard.php:66",
+    "function": "PostBoard->render()",
+    "connection": "default",
+    "max_queries_in_one_test": 100,
+    "total_queries": 200,
+    "total_time_ms": 2.28,
+    "tests": {
+        "Tests\\Feature\\PostBoardTest::test_board_is_rendered": 100,
+        "Tests\\Feature\\PostBoardTest::test_board_shows_authors": 100
+    }
+}
+```
+
+Цей приклад породжений `tests/Integration/EloquentLazyLoadingTest.php`, який перевіряє види,
+рядки й лічильники вище, тож тихо застаріти він не може.
+
 ## Параметри
 
 Будь-який параметр можна задати в `phpunit.xml` або перекрити змінною середовища
