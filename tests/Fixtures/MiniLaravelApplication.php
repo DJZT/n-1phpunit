@@ -37,6 +37,29 @@ final class MiniLaravelApplication
 
         $this->container->instance('db', $this->capsule->getDatabaseManager());
         $this->container->instance('db.connection', $this->connection());
+
+        // Eloquent models need the connection resolver, which is what lets a
+        // fixture reproduce real lazy loading.
+        $this->capsule->bootEloquent();
+    }
+
+    /**
+     * A board of posts, each with comments, for reproducing the N+1 that a
+     * single HTTP request causes when it loops over models.
+     */
+    public function seedPostsWithComments(int $posts, int $commentsEach): void
+    {
+        $connection = $this->connection();
+        $connection->statement('create table posts (id integer primary key autoincrement, title varchar not null)');
+        $connection->statement('create table comments (id integer primary key autoincrement, post_id integer not null, body varchar not null)');
+
+        for ($post = 1; $post <= $posts; ++$post) {
+            $connection->insert('insert into posts (title) values (?)', ['post ' . $post]);
+
+            for ($comment = 1; $comment <= $commentsEach; ++$comment) {
+                $connection->insert('insert into comments (post_id, body) values (?, ?)', [$post, 'comment ' . $comment]);
+            }
+        }
     }
 
     public function connection(): Connection

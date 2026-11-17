@@ -318,6 +318,9 @@ parse with your own script or to push into metrics.
   (`report-dir` + `vendor/bin/n-plus-one`) — see the sections above.
 * Capturing a backtrace on every query costs time, so the extension is meant to be on in tests,
   not in production.
+* When the loop lives in a blade template, the call site is the *compiled* view under
+  `storage/framework/views`, since that is the first frame outside `vendor/`. The count and the
+  SQL are right; the path is the one you have to translate back yourself.
 
 ## Compatibility
 
