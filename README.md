@@ -12,6 +12,7 @@ finds N+1 queries and, once the whole run is over, prints the worst offenders.
   Top 10 of 23 hotspots (a query shape repeated 3+ times in one test)
 
  #1   87x    N+1         app/Http/Controllers/OrderController.php:31 (OrderController->index())
+        via BelongsTo->getResults()
         select * from "users" where "id" = ? limit 1
         in Tests\Feature\OrderTest::test_index (87x) +4 more tests
         212 queries overall, 41.87 ms
@@ -50,7 +51,8 @@ Nothing else has to change — neither your base `TestCase` nor `AppServiceProvi
 2. The extension subscribes to `Illuminate\Database\Events\QueryExecuted` through the event
    dispatcher, which means every connection is observed, not only the default one.
 3. Each query is tagged with a backtrace: the first frame **outside** `vendor/` is the place in
-   your own code (controller, resource, blade view) that is running the loop.
+   your own code (controller, resource, blade view) that is running the loop. The innermost
+   meaningful framework call is kept too, which is what the `via` line in the report says.
 4. Queries are grouped by SQL shape (literals become `?`, `in (1,2,3)` → `in (?)`) plus the call
    site. A group that repeats `threshold` times or more inside a single test becomes a finding.
 5. `Test\Finished` closes the test; `Application\Finished` prints the ranked table.
@@ -117,11 +119,13 @@ the actual output, printed verbatim by the run:
         200 queries overall, 2.25 ms
 
  #2   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:66 (PostBoard->render())
+        via BelongsTo->getResults()
         select * from "users" where "users"."id" = ? limit 1
         in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
         200 queries overall, 2.28 ms
 
  #3   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:67 (PostBoard->render())
+        via HasMany->getResults()
         select * from "comments" where "comments"."post_id" = ? and "comments"."post_id" is not null
         in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
         200 queries overall, 4.60 ms
@@ -139,6 +143,11 @@ How to read it:
   a different question: how much the whole suite spends in this place.
 * **The blame lands in your code.** The queries are issued from inside Eloquent, but the call
   site reported is the line in `render()` that touched the relation.
+* **`via` says what the framework was doing.** `BelongsTo->getResults()` and
+  `HasMany->getResults()` are lazy relation loads. It matters most when the loop is not yours at
+  all: `exists` on an array of 100 ids reports the line that called the validator, with
+  `via DatabasePresenceVerifier->getCount()` — without which you would be hunting for a loop
+  that does not exist in your code. No `via` line (row #1) means your own code queried directly.
 * **`+1 more test`** means a second test reached the same place. Both are listed in the JSON
   report's `tests` map; the headline count stays per request.
 * **The eager-loaded request is absent.** It runs two queries for the same screen, below the
@@ -167,6 +176,7 @@ And the JSON entry behind row #2:
     "normalized_sql": "select * from \"users\" where \"users\".\"id\" = ? limit ?",
     "origin": "tests/Fixtures/Eloquent/PostBoard.php:66",
     "function": "PostBoard->render()",
+    "via": "BelongsTo->getResults()",
     "connection": "default",
     "max_queries_in_one_test": 100,
     "total_queries": 200,

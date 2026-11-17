@@ -98,6 +98,7 @@ final class Hotspot
             'normalized_sql' => $this->normalizedSql,
             'origin' => $this->origin->relative($basePath),
             'function' => $this->origin->function,
+            'via' => $this->origin->via,
             'connection' => $this->connection,
             'max_queries_in_one_test' => $this->maxCount,
             'total_queries' => $this->totalCount,

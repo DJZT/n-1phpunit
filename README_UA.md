@@ -12,6 +12,7 @@
   Top 10 of 23 hotspots (a query shape repeated 3+ times in one test)
 
  #1   87x    N+1         app/Http/Controllers/OrderController.php:31 (OrderController->index())
+        via BelongsTo->getResults()
         select * from "users" where "id" = ? limit 1
         in Tests\Feature\OrderTest::test_index (87x) +4 more tests
         212 queries overall, 41.87 ms
@@ -50,7 +51,8 @@ composer require --dev djzt/phpunit-n-plus-one
 2. Розширення вішає слухача на `Illuminate\Database\Events\QueryExecuted` (через диспетчер
    подій, тому ловляться всі з'єднання, а не лише дефолтне).
 3. Для кожного запиту знімається стек і береться перший кадр **поза** `vendor/` — те саме місце
-   в коді застосунку (контролер, ресурс, blade), яке крутить цикл.
+   в коді застосунку (контролер, ресурс, blade), яке крутить цикл. Разом з ним запамʼятовується
+   найглибший змістовний виклик фреймворку — це те, що в звіті показує рядок `via`.
 4. Запити групуються за «формою» SQL (літерали замінюються на `?`, `in (1,2,3)` → `in (?)`)
    плюс місце виклику. Група, що повторилася всередині одного тесту `threshold` разів і більше,
    стає знахідкою.
@@ -118,11 +120,13 @@ public function render(): array
         200 queries overall, 2.25 ms
 
  #2   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:66 (PostBoard->render())
+        via BelongsTo->getResults()
         select * from "users" where "users"."id" = ? limit 1
         in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
         200 queries overall, 2.28 ms
 
  #3   100x    N+1         tests/Fixtures/Eloquent/PostBoard.php:67 (PostBoard->render())
+        via HasMany->getResults()
         select * from "comments" where "comments"."post_id" = ? and "comments"."post_id" is not null
         in Tests\Feature\PostBoardTest::test_board_is_rendered (100x) +1 more test
         200 queries overall, 4.60 ms
@@ -140,6 +144,11 @@ public function render(): array
   скільки на цьому місці витрачає вся сюїта.
 * **Винним призначається твій код.** Запити летять з глибини Eloquent, але місцем виклику
   вказано рядок у `render()`, який торкнувся звʼязку.
+* **`via` каже, що саме робив фреймворк.** `BelongsTo->getResults()` і `HasMany->getResults()` —
+  це лінива підвантаження звʼязку. Найцінніше це тоді, коли цикл узагалі не твій: `exists` на
+  масиві зі 100 id покаже рядок, який запустив валідацію, і `via DatabasePresenceVerifier->getCount()` —
+  без цього довелося б шукати цикл, якого в твоєму коді немає. Немає рядка `via` (рядок #1) —
+  отже твій код сходив у базу напряму.
 * **`+1 more test`** означає, що в це саме місце зайшов другий тест. Обидва перелічені в мапі
   `tests` у JSON-звіті, а головний лічильник залишається «на запит».
 * **Жадібно завантаженого запиту тут немає.** Він робить два запити на той самий екран — нижче
@@ -168,6 +177,7 @@ $ echo $?
     "normalized_sql": "select * from \"users\" where \"users\".\"id\" = ? limit ?",
     "origin": "tests/Fixtures/Eloquent/PostBoard.php:66",
     "function": "PostBoard->render()",
+    "via": "BelongsTo->getResults()",
     "connection": "default",
     "max_queries_in_one_test": 100,
     "total_queries": 200,

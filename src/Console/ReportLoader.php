@@ -229,15 +229,16 @@ final class ReportLoader
     {
         $location = is_string($row['origin'] ?? null) ? $row['origin'] : '';
         $function = is_string($row['function'] ?? null) ? $row['function'] : null;
+        $via = is_string($row['via'] ?? null) ? $row['via'] : null;
 
         if ($location === '' || $location === 'unknown location') {
             return Origin::unknown();
         }
 
         if (preg_match('/^(?<file>.+):(?<line>\d+)$/', $location, $matches) === 1) {
-            return new Origin($matches['file'], (int) $matches['line'], $function);
+            return new Origin($matches['file'], (int) $matches['line'], $function, $via);
         }
 
-        return new Origin($location, 0, $function);
+        return new Origin($location, 0, $function, $via);
     }
 }

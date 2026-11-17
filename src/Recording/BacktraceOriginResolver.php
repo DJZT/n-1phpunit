@@ -12,6 +12,22 @@ final class BacktraceOriginResolver
 {
     private const DEPTH = 60;
 
+    /**
+     * Framework classes that only carry a query to the database. They say
+     * nothing about why it was issued, so they are skipped when looking for
+     * the framework call to blame.
+     */
+    private const PLUMBING = [
+        'Illuminate\\Events\\Dispatcher',
+        'Illuminate\\Database\\Connection',
+        'Illuminate\\Database\\DatabaseManager',
+        'Illuminate\\Database\\Query\\',
+        'Illuminate\\Database\\Concerns\\',
+        'Illuminate\\Database\\Eloquent\\Builder',
+        'Illuminate\\Support\\Facades\\',
+        'Illuminate\\Support\\Traits\\ForwardsCalls',
+    ];
+
     /** @var list<string> */
     private array $ignoredFragments;
 
@@ -40,6 +56,7 @@ final class BacktraceOriginResolver
     public function resolve(array $frames): Origin
     {
         $firstWithFile = null;
+        $via = null;
 
         foreach ($frames as $index => $frame) {
             $file = $frame['file'] ?? null;
@@ -47,15 +64,56 @@ final class BacktraceOriginResolver
                 continue;
             }
 
-            $origin = new Origin($file, (int) ($frame['line'] ?? 0), $this->enclosingFunction($frames, $index));
+            $ignored = $this->isIgnored($file);
+
+            if ($ignored) {
+                // Deepest first, so the innermost meaningful framework call wins:
+                // HasMany->getResults() rather than Connection->select().
+                $via ??= $this->frameworkCall($frame);
+            }
+
+            $origin = new Origin(
+                $file,
+                (int) ($frame['line'] ?? 0),
+                $this->enclosingFunction($frames, $index),
+                $via,
+            );
             $firstWithFile ??= $origin;
 
-            if (!$this->isIgnored($file)) {
+            if (!$ignored) {
                 return $origin;
             }
         }
 
         return $firstWithFile ?? Origin::unknown();
+    }
+
+    /**
+     * The call a framework frame is making, unless it is plain plumbing.
+     *
+     * @param array<string, mixed> $frame
+     */
+    private function frameworkCall(array $frame): ?string
+    {
+        $class = $frame['class'] ?? null;
+        $function = $frame['function'] ?? null;
+
+        if (!is_string($class) || !is_string($function) || str_contains($function, '{closure}')) {
+            return null;
+        }
+
+        // This package's own listener sits between the framework and us.
+        if (str_starts_with($class, self::packageNamespace())) {
+            return null;
+        }
+
+        foreach (self::PLUMBING as $prefix) {
+            if (str_starts_with($class, $prefix)) {
+                return null;
+            }
+        }
+
+        return $this->shortName($class) . (string) ($frame['type'] ?? '::') . $function . '()';
     }
 
     /**
@@ -74,6 +132,17 @@ final class BacktraceOriginResolver
         $class = isset($frame['class']) ? $this->shortName((string) $frame['class']) . (string) ($frame['type'] ?? '::') : '';
 
         return $class . (string) $frame['function'] . '()';
+    }
+
+    /**
+     * "NPlusOne\\PHPUnit\\", derived rather than written down so a rename
+     * cannot leave this behind.
+     */
+    private static function packageNamespace(): string
+    {
+        $position = strrpos(__NAMESPACE__, '\\');
+
+        return ($position === false ? __NAMESPACE__ : substr(__NAMESPACE__, 0, $position)) . '\\';
     }
 
     private function shortName(string $class): string

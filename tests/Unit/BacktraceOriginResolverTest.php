@@ -27,6 +27,47 @@ final class BacktraceOriginResolverTest extends TestCase
         self::assertSame('OrderController->index()', $origin->function);
     }
 
+    public function test_it_names_the_framework_call_that_issued_the_query(): void
+    {
+        $origin = (new BacktraceOriginResolver())->resolve([
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Events/Dispatcher.php', 'line' => 492, 'function' => '{closure}'],
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Database/Connection.php', 'line' => 874, 'function' => 'logQuery', 'class' => 'Illuminate\Database\Connection', 'type' => '->'],
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Database/Query/Builder.php', 'line' => 3494, 'function' => 'runSelect', 'class' => 'Illuminate\Database\Query\Builder', 'type' => '->'],
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Database/Eloquent/Relations/HasMany.php', 'line' => 41, 'function' => 'get', 'class' => 'Illuminate\Database\Eloquent\Builder', 'type' => '->'],
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Database/Eloquent/Concerns/HasAttributes.php', 'line' => 637, 'function' => 'getResults', 'class' => 'Illuminate\Database\Eloquent\Relations\HasMany', 'type' => '->'],
+            ['file' => '/app/app/Http/Controllers/OrderController.php', 'line' => 31, 'function' => '__get', 'class' => 'Illuminate\Database\Eloquent\Model', 'type' => '->'],
+            ['file' => '/app/tests/Feature/OrderTest.php', 'line' => 12, 'function' => 'index', 'class' => 'App\Http\Controllers\OrderController', 'type' => '->'],
+        ]);
+
+        self::assertSame('/app/app/Http/Controllers/OrderController.php', $origin->file);
+        // Connection and the query builders only carry the query; the relation
+        // is what explains it.
+        self::assertSame('HasMany->getResults()', $origin->via);
+    }
+
+    public function test_there_is_no_framework_call_to_name_when_the_app_queries_directly(): void
+    {
+        $origin = (new BacktraceOriginResolver())->resolve([
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Database/Connection.php', 'line' => 874, 'function' => 'logQuery', 'class' => 'Illuminate\Database\Connection', 'type' => '->'],
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Database/Query/Builder.php', 'line' => 3494, 'function' => 'runSelect', 'class' => 'Illuminate\Database\Query\Builder', 'type' => '->'],
+            ['file' => '/app/app/Support/Settings.php', 'line' => 44, 'function' => 'first', 'class' => 'Illuminate\Database\Query\Builder', 'type' => '->'],
+        ]);
+
+        self::assertSame('/app/app/Support/Settings.php', $origin->file);
+        self::assertNull($origin->via);
+    }
+
+    public function test_this_packages_own_frames_are_never_named(): void
+    {
+        $origin = (new BacktraceOriginResolver())->resolve([
+            ['file' => '/app/vendor/djzt/phpunit-n-plus-one/src/Laravel/LaravelQueryBinder.php', 'line' => 120, 'function' => 'capture', 'class' => 'NPlusOne\PHPUnit\Recording\BacktraceOriginResolver', 'type' => '->'],
+            ['file' => '/app/vendor/laravel/framework/src/Illuminate/Database/Connection.php', 'line' => 874, 'function' => 'logQuery', 'class' => 'Illuminate\Database\Connection', 'type' => '->'],
+            ['file' => '/app/app/Support/Settings.php', 'line' => 44, 'function' => 'first', 'class' => 'Illuminate\Database\Query\Builder', 'type' => '->'],
+        ]);
+
+        self::assertNull($origin->via);
+    }
+
     public function test_it_falls_back_to_the_innermost_known_frame(): void
     {
         $origin = (new BacktraceOriginResolver())->resolve([

@@ -8,6 +8,10 @@ use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Connection;
 use Illuminate\Events\Dispatcher;
+use Illuminate\Translation\ArrayLoader;
+use Illuminate\Translation\Translator;
+use Illuminate\Validation\DatabasePresenceVerifier;
+use Illuminate\Validation\Factory as ValidationFactory;
 
 /**
  * The smallest thing that still looks like a booted Laravel app to the
@@ -69,6 +73,18 @@ final class MiniLaravelApplication
                 $connection->insert('insert into comments (post_id, body) values (?, ?)', [$post, 'comment ' . $comment]);
             }
         }
+    }
+
+    /**
+     * A validator wired to this database, so a fixture can reproduce what the
+     * `exists` rule does to an array of ids.
+     */
+    public function validation(): ValidationFactory
+    {
+        $factory = new ValidationFactory(new Translator(new ArrayLoader(), 'en'), $this->container);
+        $factory->setPresenceVerifier(new DatabasePresenceVerifier($this->container->make('db')));
+
+        return $factory;
     }
 
     public function connection(): Connection

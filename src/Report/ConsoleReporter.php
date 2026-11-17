@@ -91,6 +91,10 @@ final class ConsoleReporter
             $badge,
             $this->cyan($hotspot->origin->describe($this->options->basePath)),
         );
+        if ($hotspot->origin->via !== null) {
+            $lines[] = '        ' . $this->dim('via ' . $hotspot->origin->via);
+        }
+
         $lines[] = '        ' . $this->truncate($this->squash($hotspot->sql));
 
         $tests = $hotspot->tests();

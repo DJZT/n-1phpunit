@@ -41,6 +41,34 @@ final class ConsoleReporterTest extends TestCase
         self::assertStringContainsString('400 queries recorded in 12 tests; 3 tests affected.', $output);
     }
 
+    public function test_it_names_the_framework_call_when_there_is_one(): void
+    {
+        $aggregator = new Aggregator();
+        $aggregator->add(new Detection(
+            testId: 't1',
+            sql: 'select * from "comments" where "post_id" = ?',
+            normalizedSql: 'select * from "comments" where "post_id" = ?',
+            origin: new Origin('/app/app/Http/Controllers/OrderController.php', 31, 'index()', 'HasMany->getResults()'),
+            count: 9,
+            distinctBindings: 9,
+            totalTimeMs: 1.0,
+        ));
+
+        $output = $this->reporter()->render($aggregator->top(1), new Statistics(1, 9, 1, 1));
+
+        self::assertStringContainsString('via HasMany->getResults()', $output);
+    }
+
+    public function test_nothing_is_printed_about_the_framework_when_the_app_queried_directly(): void
+    {
+        $aggregator = new Aggregator();
+        $aggregator->add($this->detection('t1', count: 9, line: 44));
+
+        $output = $this->reporter()->render($aggregator->top(1), new Statistics(1, 9, 1, 1));
+
+        self::assertStringNotContainsString('via ', $output);
+    }
+
     public function test_the_worst_hotspot_comes_first(): void
     {
         $aggregator = new Aggregator();
