@@ -219,6 +219,40 @@ final class SessionTest extends TestCase
         rmdir($directory);
     }
 
+    public function test_it_can_write_a_browsable_page_next_to_the_json(): void
+    {
+        $directory = sys_get_temp_dir() . '/n-plus-one-' . uniqid('', true);
+
+        $session = new Session(
+            new Options(
+                filter: '',
+                reportFile: $directory . '/report.json',
+                reportHtml: $directory . '/report.html',
+                console: false,
+                basePath: '/app',
+                colors: false,
+            ),
+            writer: function (string $output): void {
+                $this->output .= $output;
+            },
+        );
+
+        $session->startTest('Tests\\Feature\\OrderTest::test_index');
+        $this->recordLoop($session, times: 4);
+        $session->finish();
+
+        self::assertFileExists($directory . '/report.json');
+        self::assertFileExists($directory . '/report.html');
+        self::assertStringContainsString(
+            'app/Http/Controllers/OrderController.php:31',
+            (string) file_get_contents($directory . '/report.html'),
+        );
+
+        unlink($directory . '/report.json');
+        unlink($directory . '/report.html');
+        rmdir($directory);
+    }
+
     public function test_a_failing_json_report_does_not_break_the_run(): void
     {
         $session = $this->session(new Options(filter: '', reportFile: '/proc/definitely/not/writable/report.json', colors: false));

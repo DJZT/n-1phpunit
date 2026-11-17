@@ -211,6 +211,7 @@ NPLUSONE_THRESHOLD=2 NPLUSONE_REPORT_FILE=build/n-plus-one.json vendor/bin/phpun
 | `report-file` | — | шлях до JSON-звіту (каталог створюється сам). Підтримує `{token}` і `{pid}` |
 | `report-dir` | — | каталог, куди кожен процес пише свій звіт — саме те, що потрібно для `--parallel` |
 | `console` | `true` | чи друкувати таблицю в кінці прогону (у паралелі зазвичай `false`) |
+| `report-html` | — | шлях до HTML-сторінки для перегляду; для паралелі краще `--html` у CLI |
 | `sql-max-length` | `160` | до скількох символів обрізати SQL у консолі |
 | `ignore-sql` | — | список PCRE через `\|\|\|`, застосовується до нормалізованого SQL |
 | `base-path` | `getcwd()` | корінь проєкту, щоб шляхи у звіті були відносними |
@@ -271,6 +272,23 @@ final class OrderTest extends TestCase
 ```
 
 Зручно складати артефактом CI і порівнювати між прогонами.
+
+## HTML-звіт
+
+Півтори сотні місць не вміщаються в скрол термінала, тому ті самі дані рендеряться сторінкою:
+
+```bash
+vendor/bin/n-plus-one build/n-plus-one --html=build/n-plus-one.html
+```
+
+Сторінка самодостатня — ні CDN, ні зовнішніх файлів, нічого не підвантажується — тож
+відкривається з `file://` або прямо з артефакту CI. Усередині: підсумок прогону, живий пошук по
+файлу, запиту, назві тесту й виклику фреймворку, фільтр за видом, сортування за найгіршим тестом
+/ сумою запитів / часом / кількістю тестів і список тестів, що зайшли в це місце.
+
+Для прогону в один процес сторінку може писати саме розширення — параметр `report-html`. Для
+паралельного прогону беріть CLI: він зробить одну сторінку з усіх воркерів, а не по сторінці на
+воркер.
 
 ## Якщо застосунок піднімається не в `setUp()`
 
@@ -368,6 +386,7 @@ vendor/bin/n-plus-one build/n-plus-one --max-queries=20
 | `--baseline=FILE` | з'явилося нове місце або відоме стало гіршим |
 
 Решта: `--write-baseline=FILE`, `--output=FILE` (злитий JSON артефактом),
+`--html=FILE` (сторінка для перегляду),
 `--kind=all|n+1`, `--top=N`, `--format=text|json|github`, `--allow-empty`,
 `--no-color`. Повний список — `vendor/bin/n-plus-one --help`.
 
@@ -397,12 +416,15 @@ git add .n-plus-one-baseline.json
              --baseline=.n-plus-one-baseline.json
              --format=github
              --output=build/n-plus-one-merged.json
+             --html=build/n-plus-one.html
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: n-plus-one
-          path: build/n-plus-one-merged.json
+          path: |
+            build/n-plus-one-merged.json
+            build/n-plus-one.html
 ```
 
 `--format=github` друкує `::error` прямо на рядку з циклом (анотація видна в

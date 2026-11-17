@@ -210,6 +210,7 @@ NPLUSONE_THRESHOLD=2 NPLUSONE_REPORT_FILE=build/n-plus-one.json vendor/bin/phpun
 | `report-file` | — | path to the JSON report (the directory is created). Understands `{token}` and `{pid}` |
 | `report-dir` | — | directory where each process writes its own report — what you want for `--parallel` |
 | `console` | `true` | whether the table is printed at the end of the run (usually `false` in parallel) |
+| `report-html` | — | path to a browsable HTML page; for parallel runs prefer the CLI's `--html` |
 | `sql-max-length` | `160` | how far to truncate SQL in the console |
 | `ignore-sql` | — | PCRE list separated by `\|\|\|`, applied to the normalised SQL |
 | `base-path` | `getcwd()` | project root, so paths in the report are relative |
@@ -271,6 +272,24 @@ its failure message.
 ```
 
 Worth keeping as a CI artefact and comparing between runs.
+
+## The HTML report
+
+A hundred-odd hotspots do not fit in a terminal scroll-back, so the same data renders as one
+page:
+
+```bash
+vendor/bin/n-plus-one build/n-plus-one --html=build/n-plus-one.html
+```
+
+It is self-contained — no CDN, no assets, nothing fetched — so it opens from a `file://` URL or
+straight out of a CI artefact. The page carries a run summary, live search across file, query,
+test name and framework call, filtering by kind, sorting by worst single test / queries overall /
+time / tests affected, and a per-row list of the tests that hit that place.
+
+A single-process run can write it straight from the extension with `report-html`. In a parallel
+run use the CLI, which renders one page from every worker's report rather than one page per
+worker.
 
 ## When the application boots outside `setUp()`
 
@@ -367,6 +386,7 @@ Budget rules — any one of them lets the command fail:
 | `--baseline=FILE` | a new hotspot appeared, or a known one got worse |
 
 The rest: `--write-baseline=FILE`, `--output=FILE` (the merged JSON as an artefact),
+`--html=FILE` (the browsable page),
 `--kind=all|n+1`, `--top=N`, `--format=text|json|github`, `--allow-empty`, `--no-color`. For the
 full list, `vendor/bin/n-plus-one --help`.
 
@@ -396,12 +416,15 @@ the baseline, and the bar comes down.
              --baseline=.n-plus-one-baseline.json
              --format=github
              --output=build/n-plus-one-merged.json
+             --html=build/n-plus-one.html
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: n-plus-one
-          path: build/n-plus-one-merged.json
+          path: |
+            build/n-plus-one-merged.json
+            build/n-plus-one.html
 ```
 
 `--format=github` prints `::error` right on the line with the loop (the annotation shows up in

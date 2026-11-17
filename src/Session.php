@@ -11,6 +11,7 @@ use NPlusOne\PHPUnit\Configuration\Options;
 use NPlusOne\PHPUnit\Laravel\LaravelQueryBinder;
 use NPlusOne\PHPUnit\Recording\QueryRecorder;
 use NPlusOne\PHPUnit\Report\ConsoleReporter;
+use NPlusOne\PHPUnit\Report\HtmlReporter;
 use NPlusOne\PHPUnit\Report\JsonReporter;
 use NPlusOne\PHPUnit\Report\ReportDestination;
 use NPlusOne\PHPUnit\Report\Statistics;
@@ -125,17 +126,33 @@ final class Session
             ));
         }
 
-        $path = $this->destination->path();
+        // `limit` trims what a human reads, never what is written to a file:
+        // under a parallel runner every worker's report is merged later, and a
+        // hotspot dropped here would be lost for good.
+        $all = $this->aggregator->top(PHP_INT_MAX);
 
+        $this->writeReport(
+            $this->destination->path(),
+            fn (string $path) => (new JsonReporter($this->options))->write($path, $all, $statistics),
+        );
+
+        $this->writeReport(
+            $this->destination->htmlPath(),
+            fn (string $path) => (new HtmlReporter($this->options))->write($path, $all, $statistics),
+        );
+    }
+
+    /**
+     * @param callable(string): void $write
+     */
+    private function writeReport(?string $path, callable $write): void
+    {
         if ($path === null) {
             return;
         }
 
         try {
-            // `limit` trims what a human reads, never what is written to the
-            // file: under a parallel runner every worker's report is merged
-            // later, and a hotspot dropped here would be lost for good.
-            (new JsonReporter($this->options))->write($path, $this->aggregator->top(PHP_INT_MAX), $statistics);
+            $write($path);
         } catch (Throwable $exception) {
             ($this->writer)('  N+1 report could not be written: ' . $exception->getMessage() . PHP_EOL);
         }

@@ -218,6 +218,23 @@ final class AnalyzeCommandTest extends TestCase
         self::assertStringNotContainsString('earlier run', $this->output);
     }
 
+    public function test_it_writes_one_html_page_for_the_whole_run(): void
+    {
+        $this->givenTwoWorkerReports();
+        $page = $this->path('report.html');
+
+        self::assertSame(AnalyzeCommand::EXIT_OK, $this->analyze([$this->directory, '--html=' . $page]));
+        self::assertStringContainsString('HTML report written to', $this->output);
+        self::assertFileExists($page);
+
+        $html = (string) file_get_contents($page);
+
+        self::assertStringStartsWith('<!DOCTYPE html>', $html);
+        self::assertStringContainsString('data-worst="40"', $html, 'the merged count, not one worker\'s');
+        self::assertStringContainsString('app/Http/Controllers/OrderController.php:31', $html);
+        self::assertStringContainsString('Tests\\Feature\\OrderTest::test_index', $html);
+    }
+
     public function test_missing_reports_fail_loudly_by_default(): void
     {
         self::assertSame(AnalyzeCommand::EXIT_USAGE, $this->analyze([$this->path('nope')]));

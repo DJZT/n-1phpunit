@@ -22,6 +22,8 @@ final class Options
      *                              An empty string disables filtering (every test is analysed).
      * @param list<string> $ignoreSql PCRE list; a query whose normalised form matches is never reported.
      * @param ?string $reportDir Directory for one report per process; the safe choice for parallel runs.
+     * @param ?string $reportHtml Path to a browsable HTML page. In a parallel run prefer the CLI's --html,
+     *                            which renders one page from every worker's report.
      * @param bool $console Whether the ranked table is printed at the end of the run.
      */
     public function __construct(
@@ -32,6 +34,7 @@ final class Options
         public readonly bool $includeDuplicates = true,
         public readonly ?string $reportFile = null,
         public readonly ?string $reportDir = null,
+        public readonly ?string $reportHtml = null,
         public readonly bool $console = true,
         public readonly int $sqlMaxLength = 160,
         public readonly array $ignoreSql = [],
@@ -63,6 +66,7 @@ final class Options
             includeDuplicates: self::toBool($get('include-duplicates'), $defaults->includeDuplicates),
             reportFile: $get('report-file'),
             reportDir: $get('report-dir'),
+            reportHtml: $get('report-html'),
             console: self::toBool($get('console'), $defaults->console),
             sqlMaxLength: max(20, (int) ($get('sql-max-length') ?? $defaults->sqlMaxLength)),
             ignoreSql: $ignoreSql === null ? [] : array_values(array_filter(array_map('trim', explode('|||', $ignoreSql)))),

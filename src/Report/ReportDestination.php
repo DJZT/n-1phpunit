@@ -24,12 +24,18 @@ final class ReportDestination
         private readonly ?string $file,
         private readonly ?string $directory = null,
         private readonly Shard $shard = new Shard(null, 0),
+        private readonly ?string $html = null,
     ) {
     }
 
     public static function fromOptions(Options $options, ?Shard $shard = null): self
     {
-        return new self($options->reportFile, $options->reportDir, $shard ?? Shard::current());
+        return new self(
+            $options->reportFile,
+            $options->reportDir,
+            $shard ?? Shard::current(),
+            $options->reportHtml,
+        );
     }
 
     public function path(): ?string
@@ -38,19 +44,32 @@ final class ReportDestination
             return rtrim($this->directory, '/') . '/' . self::FILE_PREFIX . $this->shard->id() . '.json';
         }
 
-        if ($this->file === null || $this->file === '') {
+        return $this->resolve($this->file);
+    }
+
+    /**
+     * Where this process writes its HTML page, if it was asked for one.
+     */
+    public function htmlPath(): ?string
+    {
+        return $this->resolve($this->html);
+    }
+
+    private function resolve(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
             return null;
         }
 
-        if (str_contains($this->file, '{token}') || str_contains($this->file, '{pid}')) {
+        if (str_contains($path, '{token}') || str_contains($path, '{pid}')) {
             return str_replace(
                 ['{token}', '{pid}'],
                 [$this->shard->id(), (string) $this->shard->pid()],
-                $this->file,
+                $path,
             );
         }
 
-        return $this->shard->isParallel() ? $this->withSuffix($this->file, $this->shard->id()) : $this->file;
+        return $this->shard->isParallel() ? $this->withSuffix($path, $this->shard->id()) : $path;
     }
 
     private function withSuffix(string $path, string $suffix): string

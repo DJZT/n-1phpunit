@@ -9,6 +9,7 @@ use NPlusOne\PHPUnit\Analysis\Detection;
 use NPlusOne\PHPUnit\Analysis\Hotspot;
 use NPlusOne\PHPUnit\Configuration\Options;
 use NPlusOne\PHPUnit\Report\ConsoleReporter;
+use NPlusOne\PHPUnit\Report\HtmlReporter;
 use NPlusOne\PHPUnit\Report\JsonReporter;
 use NPlusOne\PHPUnit\Report\Statistics;
 use Throwable;
@@ -42,6 +43,7 @@ final class AnalyzeCommand
         '--top',
         '--format',
         '--output',
+        '--html',
         '--kind',
     ];
 
@@ -136,6 +138,10 @@ final class AnalyzeCommand
             return self::EXIT_USAGE;
         }
 
+        if ($arguments['html'] !== null && !$this->writeHtml($arguments['html'], $reports->threshold, $all, $statistics)) {
+            return self::EXIT_USAGE;
+        }
+
         match ($arguments['format']) {
             'json' => $this->renderJson($reports, $statistics, $all, $violations, $budget),
             'github' => $this->renderGithub($reports, $statistics, $top, $violations, $budget, $colors, $reports->threshold, $newOrWorse),
@@ -203,6 +209,26 @@ final class AnalyzeCommand
 
             return false;
         }
+
+        return true;
+    }
+
+    /**
+     * One browsable page for the whole run, workers merged.
+     *
+     * @param list<Hotspot> $hotspots
+     */
+    private function writeHtml(string $path, int $threshold, array $hotspots, Statistics $statistics): bool
+    {
+        try {
+            (new HtmlReporter(new Options(threshold: $threshold, basePath: '')))->write($path, $hotspots, $statistics);
+        } catch (Throwable $exception) {
+            $this->line('Error: ' . $exception->getMessage());
+
+            return false;
+        }
+
+        $this->line('HTML report written to ' . $path);
 
         return true;
     }
@@ -433,7 +459,7 @@ final class AnalyzeCommand
     /**
      * @param list<string> $arguments
      *
-     * @return array{paths: list<string>, maxQueries: ?int, maxHotspots: ?int, failOnAny: bool, baseline: ?string, writeBaseline: ?string, top: int, format: string, output: ?string, kind: string, allowEmpty: bool, colors: ?bool, help: bool}
+     * @return array{paths: list<string>, maxQueries: ?int, maxHotspots: ?int, failOnAny: bool, baseline: ?string, writeBaseline: ?string, top: int, format: string, output: ?string, html: ?string, kind: string, allowEmpty: bool, colors: ?bool, help: bool}
      *
      * @throws LoadFailure on bad usage
      */
@@ -449,6 +475,7 @@ final class AnalyzeCommand
             'top' => 10,
             'format' => 'text',
             'output' => null,
+            'html' => null,
             'kind' => 'all',
             'allowEmpty' => false,
             'colors' => null,
@@ -505,6 +532,9 @@ final class AnalyzeCommand
                     break;
                 case '--output':
                     $parsed['output'] = (string) $value;
+                    break;
+                case '--html':
+                    $parsed['html'] = (string) $value;
                     break;
                 case '--fail-on-any':
                     $parsed['failOnAny'] = true;
@@ -604,6 +634,7 @@ final class AnalyzeCommand
             Other options:
               --write-baseline=FILE  record the current hotspots as the accepted baseline
               --output=FILE          write the merged report as JSON
+              --html=FILE            write a browsable HTML page of the whole run
               --kind=all|n+1         analyse every repeat, or only varying-binding N+1
               --top=N                how many hotspots to show (default 10)
               --format=text|json|github
