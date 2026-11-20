@@ -24,6 +24,8 @@ final class Options
      * @param ?string $reportDir Directory for one report per process; the safe choice for parallel runs.
      * @param ?string $reportHtml Path to a browsable HTML page. In a parallel run prefer the CLI's --html,
      *                            which renders one page from every worker's report.
+     * @param ?string $reportCodeQuality Path to a GitLab Code Quality report; in a parallel run prefer
+     *                                   the CLI's --codequality.
      * @param bool $console Whether the ranked table is printed at the end of the run.
      */
     public function __construct(
@@ -35,6 +37,7 @@ final class Options
         public readonly ?string $reportFile = null,
         public readonly ?string $reportDir = null,
         public readonly ?string $reportHtml = null,
+        public readonly ?string $reportCodeQuality = null,
         public readonly bool $console = true,
         public readonly int $sqlMaxLength = 160,
         public readonly array $ignoreSql = [],
@@ -67,6 +70,7 @@ final class Options
             reportFile: $get('report-file'),
             reportDir: $get('report-dir'),
             reportHtml: $get('report-html'),
+            reportCodeQuality: $get('report-codequality'),
             console: self::toBool($get('console'), $defaults->console),
             sqlMaxLength: max(20, (int) ($get('sql-max-length') ?? $defaults->sqlMaxLength)),
             ignoreSql: $ignoreSql === null ? [] : array_values(array_filter(array_map('trim', explode('|||', $ignoreSql)))),

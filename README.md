@@ -211,6 +211,7 @@ NPLUSONE_THRESHOLD=2 NPLUSONE_REPORT_FILE=build/n-plus-one.json vendor/bin/phpun
 | `report-dir` | — | directory where each process writes its own report — what you want for `--parallel` |
 | `console` | `true` | whether the table is printed at the end of the run (usually `false` in parallel) |
 | `report-html` | — | path to a browsable HTML page; for parallel runs prefer the CLI's `--html` |
+| `report-codequality` | — | path to a GitLab Code Quality report; for parallel runs prefer the CLI's `--codequality` |
 | `sql-max-length` | `160` | how far to truncate SQL in the console |
 | `ignore-sql` | — | PCRE list separated by `\|\|\|`, applied to the normalised SQL |
 | `base-path` | `getcwd()` | project root, so paths in the report are relative |
@@ -386,7 +387,7 @@ Budget rules — any one of them lets the command fail:
 | `--baseline=FILE` | a new hotspot appeared, or a known one got worse |
 
 The rest: `--write-baseline=FILE`, `--output=FILE` (the merged JSON as an artefact),
-`--html=FILE` (the browsable page),
+`--html=FILE` (the browsable page), `--codequality=FILE` (the GitLab artefact),
 `--kind=all|n+1`, `--top=N`, `--format=text|json|github`, `--allow-empty`, `--no-color`. For the
 full list, `vendor/bin/n-plus-one --help`.
 
@@ -431,6 +432,52 @@ the baseline, and the bar comes down.
 the PR diff), appends a table to `$GITHUB_STEP_SUMMARY` and sets the outputs `status`,
 `hotspots`, `violations` and `worst_queries` for later steps. When the budget is not exceeded,
 hotspots are annotated as `::warning` — visible, but not red.
+
+### GitLab CI
+
+GitLab renders the findings itself, in the merge request, if the run writes a Code Quality
+report:
+
+```yaml
+tests:
+  script:
+    - php artisan test --parallel
+    - vendor/bin/n-plus-one build/n-plus-one
+        --codequality=gl-code-quality-report.json
+        --html=build/n-plus-one.html
+        --baseline=.n-plus-one-baseline.json
+  artifacts:
+    when: always
+    paths:
+      - build/n-plus-one.html
+    reports:
+      codequality: gl-code-quality-report.json
+```
+
+Each hotspot becomes one finding at its file and line, so it shows up in the merge request
+widget and, when that line is part of the diff, inline in the Changes tab.
+
+The severity is decided by the worst single test — what one request costs:
+
+| worst single test | `N+1` | `duplicate` |
+| --- | --- | --- |
+| 100 and up | blocker | critical |
+| 50–99 | critical | major |
+| 20–49 | major | minor |
+| below 20 | minor | info |
+
+Two things worth knowing about how GitLab reads it:
+
+* **The target branch needs the artefact too.** The widget tells new findings from known ones by
+  comparing fingerprints with the target branch's report. If only the merge request pipeline
+  writes one, everything looks new.
+* **The fingerprint is the identity of the problem, not its size.** It is built from the kind,
+  the file, the function and the normalised SQL — deliberately not from the line number and not
+  from the count, so a hotspot that moves or gets worse stays the same finding instead of
+  appearing as a new one next to a "fixed" twin.
+
+`--codequality` only writes the artefact; whether the job fails is still decided by the budget
+flags above.
 
 ### Any other CI
 

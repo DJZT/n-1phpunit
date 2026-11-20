@@ -37,18 +37,30 @@ final class Origin
         return $this->isUnknown() ? 'unknown' : $this->file . ':' . $this->line;
     }
 
+    /**
+     * The file alone, for consumers that address files rather than lines —
+     * GitLab's Code Quality report, for one.
+     */
+    public function relativeFile(string $basePath): string
+    {
+        if ($this->isUnknown()) {
+            return '';
+        }
+
+        if ($basePath !== '' && str_starts_with($this->file, $basePath . '/')) {
+            return substr($this->file, strlen($basePath) + 1);
+        }
+
+        return $this->file;
+    }
+
     public function relative(string $basePath): string
     {
         if ($this->isUnknown()) {
             return 'unknown location';
         }
 
-        $file = $this->file;
-        if ($basePath !== '' && str_starts_with($file, $basePath . '/')) {
-            $file = substr($file, strlen($basePath) + 1);
-        }
-
-        return $file . ':' . $this->line;
+        return $this->relativeFile($basePath) . ':' . $this->line;
     }
 
     public function describe(string $basePath): string

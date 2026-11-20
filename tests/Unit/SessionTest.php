@@ -253,6 +253,41 @@ final class SessionTest extends TestCase
         rmdir($directory);
     }
 
+    public function test_it_can_write_a_gitlab_code_quality_report(): void
+    {
+        $directory = sys_get_temp_dir() . '/n-plus-one-' . uniqid('', true);
+
+        $session = new Session(
+            new Options(
+                filter: '',
+                reportCodeQuality: $directory . '/gl-code-quality-report.json',
+                console: false,
+                basePath: '/app',
+                colors: false,
+            ),
+            writer: function (string $output): void {
+                $this->output .= $output;
+            },
+        );
+
+        $session->startTest('Tests\\Feature\\OrderTest::test_index');
+        $this->recordLoop($session, times: 4);
+        $session->finish();
+
+        /** @var list<array<string, mixed>> $issues */
+        $issues = json_decode(
+            (string) file_get_contents($directory . '/gl-code-quality-report.json'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+
+        self::assertCount(1, $issues);
+        self::assertSame('app/Http/Controllers/OrderController.php', $issues[0]['location']['path']);
+
+        unlink($directory . '/gl-code-quality-report.json');
+        rmdir($directory);
+    }
+
     public function test_a_failing_json_report_does_not_break_the_run(): void
     {
         $session = $this->session(new Options(filter: '', reportFile: '/proc/definitely/not/writable/report.json', colors: false));

@@ -235,6 +235,24 @@ final class AnalyzeCommandTest extends TestCase
         self::assertStringContainsString('Tests\\Feature\\OrderTest::test_index', $html);
     }
 
+    public function test_it_writes_a_gitlab_code_quality_report(): void
+    {
+        $this->givenTwoWorkerReports();
+        $artefact = $this->path('gl-code-quality-report.json');
+
+        self::assertSame(AnalyzeCommand::EXIT_OK, $this->analyze([$this->directory, '--codequality=' . $artefact]));
+        self::assertStringContainsString('GitLab Code Quality report written to', $this->output);
+
+        /** @var list<array<string, mixed>> $issues */
+        $issues = json_decode((string) file_get_contents($artefact), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertCount(1, $issues, 'the workers are merged into one finding');
+        self::assertSame('app/Http/Controllers/OrderController.php', $issues[0]['location']['path']);
+        self::assertSame(31, $issues[0]['location']['lines']['begin']);
+        self::assertSame('major', $issues[0]['severity'], '40 queries in one test');
+        self::assertStringContainsString('47 across 2 tests', $issues[0]['description']);
+    }
+
     public function test_missing_reports_fail_loudly_by_default(): void
     {
         self::assertSame(AnalyzeCommand::EXIT_USAGE, $this->analyze([$this->path('nope')]));

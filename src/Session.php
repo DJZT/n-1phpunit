@@ -11,6 +11,7 @@ use NPlusOne\PHPUnit\Configuration\Options;
 use NPlusOne\PHPUnit\Laravel\LaravelQueryBinder;
 use NPlusOne\PHPUnit\Recording\QueryRecorder;
 use NPlusOne\PHPUnit\Report\ConsoleReporter;
+use NPlusOne\PHPUnit\Report\CodeQualityReporter;
 use NPlusOne\PHPUnit\Report\HtmlReporter;
 use NPlusOne\PHPUnit\Report\JsonReporter;
 use NPlusOne\PHPUnit\Report\ReportDestination;
@@ -139,6 +140,11 @@ final class Session
         $this->writeReport(
             $this->destination->htmlPath(),
             fn (string $path) => (new HtmlReporter($this->options))->write($path, $all, $statistics),
+        );
+
+        $this->writeReport(
+            $this->destination->codeQualityPath(),
+            fn (string $path) => (new CodeQualityReporter($this->options))->write($path, $all),
         );
     }
 

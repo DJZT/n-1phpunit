@@ -25,6 +25,7 @@ final class ReportDestination
         private readonly ?string $directory = null,
         private readonly Shard $shard = new Shard(null, 0),
         private readonly ?string $html = null,
+        private readonly ?string $codeQuality = null,
     ) {
     }
 
@@ -35,6 +36,7 @@ final class ReportDestination
             $options->reportDir,
             $shard ?? Shard::current(),
             $options->reportHtml,
+            $options->reportCodeQuality,
         );
     }
 
@@ -53,6 +55,14 @@ final class ReportDestination
     public function htmlPath(): ?string
     {
         return $this->resolve($this->html);
+    }
+
+    /**
+     * Where this process writes its GitLab Code Quality report, if asked.
+     */
+    public function codeQualityPath(): ?string
+    {
+        return $this->resolve($this->codeQuality);
     }
 
     private function resolve(?string $path): ?string

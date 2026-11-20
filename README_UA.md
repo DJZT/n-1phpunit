@@ -212,6 +212,7 @@ NPLUSONE_THRESHOLD=2 NPLUSONE_REPORT_FILE=build/n-plus-one.json vendor/bin/phpun
 | `report-dir` | — | каталог, куди кожен процес пише свій звіт — саме те, що потрібно для `--parallel` |
 | `console` | `true` | чи друкувати таблицю в кінці прогону (у паралелі зазвичай `false`) |
 | `report-html` | — | шлях до HTML-сторінки для перегляду; для паралелі краще `--html` у CLI |
+| `report-codequality` | — | шлях до звіту GitLab Code Quality; для паралелі краще `--codequality` у CLI |
 | `sql-max-length` | `160` | до скількох символів обрізати SQL у консолі |
 | `ignore-sql` | — | список PCRE через `\|\|\|`, застосовується до нормалізованого SQL |
 | `base-path` | `getcwd()` | корінь проєкту, щоб шляхи у звіті були відносними |
@@ -386,7 +387,7 @@ vendor/bin/n-plus-one build/n-plus-one --max-queries=20
 | `--baseline=FILE` | з'явилося нове місце або відоме стало гіршим |
 
 Решта: `--write-baseline=FILE`, `--output=FILE` (злитий JSON артефактом),
-`--html=FILE` (сторінка для перегляду),
+`--html=FILE` (сторінка для перегляду), `--codequality=FILE` (артефакт для GitLab),
 `--kind=all|n+1`, `--top=N`, `--format=text|json|github`, `--allow-empty`,
 `--no-color`. Повний список — `vendor/bin/n-plus-one --help`.
 
@@ -431,6 +432,49 @@ git add .n-plus-one-baseline.json
 дифі PR), дописує таблицю в `$GITHUB_STEP_SUMMARY` і виставляє outputs
 `status`, `hotspots`, `violations`, `worst_queries` для наступних кроків. Коли
 бюджет не порушено, місця позначаються як `::warning` — видно, але не червоно.
+
+### GitLab CI
+
+GitLab уміє показувати знахідки сам, прямо в merge request, якщо прогін пише звіт Code Quality:
+
+```yaml
+tests:
+  script:
+    - php artisan test --parallel
+    - vendor/bin/n-plus-one build/n-plus-one
+        --codequality=gl-code-quality-report.json
+        --html=build/n-plus-one.html
+        --baseline=.n-plus-one-baseline.json
+  artifacts:
+    when: always
+    paths:
+      - build/n-plus-one.html
+    reports:
+      codequality: gl-code-quality-report.json
+```
+
+Кожне місце стає окремою знахідкою на своєму файлі й рядку: видно у віджеті merge request, а
+якщо цей рядок потрапив у дифф — ще й прямо в коді на вкладці Changes.
+
+Серйозність визначає найгірший окремий тест — тобто ціна одного запиту:
+
+| найгірший тест | `N+1` | `duplicate` |
+| --- | --- | --- |
+| 100 і більше | blocker | critical |
+| 50–99 | critical | major |
+| 20–49 | major | minor |
+| менше 20 | minor | info |
+
+Два моменти про те, як GitLab це читає:
+
+* **Цільовій гілці артефакт теж потрібен.** Віджет відрізняє нові знахідки від відомих,
+  порівнюючи fingerprint зі звітом цільової гілки. Якщо його пише лише пайплайн merge request —
+  усе виглядатиме новим.
+* **Fingerprint — це тотожність проблеми, а не її розмір.** Він рахується з виду, файлу, функції
+  та нормалізованого SQL — свідомо без номера рядка й без лічильника, щоб місце, яке переїхало
+  або погіршилося, лишалося тією самою знахідкою, а не з'являлося як нова поруч із «виправленою».
+
+`--codequality` лише пише артефакт; чи падати джобі, як і раніше, вирішують прапорці бюджету.
 
 ### Будь-який інший CI
 
